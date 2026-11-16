@@ -5,12 +5,30 @@ int main() {
     char** arglist;
 
     while ((cmdline = read_cmd(PROMPT, stdin)) != NULL) {
+        // Handle !n before tokenizing and before adding to history
+        if (cmdline[0] == '!') {
+            int n = atoi(cmdline + 1);
+            char* cmd = get_history_cmd(n);
+            if (cmd == NULL) {
+                fprintf(stderr, "history: !%s: event not found\n", cmdline + 1);
+                free(cmdline);
+                continue;
+            }
+            free(cmdline);
+            cmdline = strdup(cmd);
+            printf("%s\n", cmdline);
+        }
+
+        // Store the command (skip empty lines)
+        if (cmdline[0] != '\0') {
+            add_history_cmd(cmdline);
+        }
+
         if ((arglist = tokenize(cmdline)) != NULL) {
             if (handle_builtin(arglist) == 0) {
                 execute(arglist);
             }
 
-            // Free the memory allocated by tokenize()
             for (int i = 0; arglist[i] != NULL; i++) {
                 free(arglist[i]);
             }

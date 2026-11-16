@@ -1,5 +1,26 @@
 #include "shell.h"
 
+static char* history[HISTORY_SIZE];
+static int history_count = 0;
+
+void add_history_cmd(char* cmdline) {
+    if (history_count == HISTORY_SIZE) {
+        free(history[0]);
+        for (int i = 1; i < HISTORY_SIZE; i++) {
+            history[i - 1] = history[i];
+        }
+        history_count--;
+    }
+    history[history_count++] = strdup(cmdline);
+}
+
+char* get_history_cmd(int n) {
+    if (n < 1 || n > history_count) {
+        return NULL;
+    }
+    return history[n - 1];
+}
+
 char* read_cmd(char* prompt, FILE* fp) {
     printf("%s", prompt);
     char* cmdline = (char*) malloc(sizeof(char) * MAX_LEN);
@@ -80,10 +101,17 @@ int handle_builtin(char** arglist) {
         printf("  cd <dir>    - change directory\n");
         printf("  help        - show this help\n");
         printf("  jobs        - list background jobs\n");
+        printf("  history     - show command history\n");
         return 1;
     }
     else if (strcmp(arglist[0], "jobs") == 0) {
         printf("Job control not yet implemented.\n");
+        return 1;
+    }
+    else if (strcmp(arglist[0], "history") == 0) {
+        for (int i = 0; i < history_count; i++) {
+            printf("%d  %s\n", i + 1, history[i]);
+        }
         return 1;
     }
     return 0;
