@@ -1,10 +1,18 @@
 #include "shell.h"
+#include <readline/readline.h>
+#include <readline/history.h>
 
 int main() {
     char* cmdline;
     char** arglist;
 
-    while ((cmdline = read_cmd(PROMPT, stdin)) != NULL) {
+    while ((cmdline = readline(PROMPT)) != NULL) {
+        // Skip empty lines
+        if (cmdline[0] == '\0') {
+            free(cmdline);
+            continue;
+        }
+
         // Handle !n before tokenizing and before adding to history
         if (cmdline[0] == '!') {
             int n = atoi(cmdline + 1);
@@ -19,10 +27,8 @@ int main() {
             printf("%s\n", cmdline);
         }
 
-        // Store the command (skip empty lines)
-        if (cmdline[0] != '\0') {
-            add_history_cmd(cmdline);
-        }
+        add_history(cmdline);       // readline: up/down arrows
+        add_history_cmd(cmdline);   // our own: history builtin and !n
 
         if ((arglist = tokenize(cmdline)) != NULL) {
             if (handle_builtin(arglist) == 0) {
