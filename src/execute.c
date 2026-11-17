@@ -38,7 +38,8 @@ static void apply_redirections(char** args) {
     }
 }
 
-int execute(char** arglist) {
+// Returns exit status of the last command (0 for background jobs).
+int execute(char** arglist, int background) {
     char* copy[MAXARGS + 2];      // our own pointer array, so arglist stays intact for free()
     char** cmds[MAXCMDS];
     int ncmds = 0;
@@ -87,7 +88,6 @@ int execute(char** arglist) {
             if (i > 0) dup2(pipefd[i - 1][0], STDIN_FILENO);
             if (i < ncmds - 1) dup2(pipefd[i][1], STDOUT_FILENO);
 
-            // close ALL pipe ends in the child
             for (int k = 0; k < ncmds - 1; k++) {
                 close(pipefd[k][0]);
                 close(pipefd[k][1]);
@@ -108,9 +108,21 @@ int execute(char** arglist) {
         close(pipefd[i][1]);
     }
 
-    int status;
+    if (background) {
+        // Do NOT wait: remember the job and return to the prompt immediately
+        char desc[MAX_LEN] = "";
+        for (i = 0; arglist[i] != NULL; i++) {
+            if (i > 0) strncat(desc, " ", MAX_LEN - strlen(desc) - 1);
+            strncat(desc, arglist[i], MAX_LEN - strlen(desc) - 1);
+        }
+        add_job(pids[ncmds - 1], desc);
+        printf("[bg] %d\n", (int)pids[ncmds - 1]);
+        return 0;
+    }
+
+    int status = 0;
     for (i = 0; i < ncmds; i++) {
         waitpid(pids[i], &status, 0);
     }
-    return 0;
+    return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
 }
