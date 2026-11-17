@@ -2,7 +2,14 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
-// Runs one command (no ';' inside). Detects trailing '&'.
+#define MAXBLOCK 20
+
+static char* skip_ws(char* s) {
+    while (*s == ' ' || *s == '\t') s++;
+    return s;
+}
+
+// Runs one command (no ';' inside). Detects trailing '&'. Returns exit status.
 static int run_command(char* segment) {
     int status = 0;
     char** arglist = tokenize(segment);
@@ -32,7 +39,7 @@ static int run_command(char* segment) {
     return status;
 }
 
-// Splits a line on ';' and runs each command one after another.
+// Splits a line on ';' and runs each command. Returns status of the last one.
 static int run_line(char* line) {
     int status = 0;
     char* copy = strdup(line);
@@ -45,11 +52,56 @@ static int run_line(char* line) {
     return status;
 }
 
+// cond_line is the text after "if". Reads following lines until "fi".
+static void handle_if(char* cond_line) {
+    char* cond = strdup(cond_line);
+    char* then_block[MAXBLOCK];
+    char* else_block[MAXBLOCK];
+    int nthen = 0, nelse = 0;
+    int state = 0;      // 0 = before then, 1 = in then block, 2 = in else block
+    int closed = 0;
+    char* line;
+
+    while ((line = readline("> ")) != NULL) {
+        char* t = skip_ws(line);
+        size_t n = strlen(t);
+        while (n > 0 && (t[n - 1] == ' ' || t[n - 1] == '\t')) t[--n] = '\0';
+
+        if (strcmp(t, "fi") == 0) {
+            closed = 1;
+            free(line);
+            break;
+        } else if (strcmp(t, "then") == 0) {
+            state = 1;
+        } else if (strcmp(t, "else") == 0) {
+            state = 2;
+        } else if (t[0] != '\0') {
+            if (state == 1 && nthen < MAXBLOCK) then_block[nthen++] = strdup(t);
+            else if (state == 2 && nelse < MAXBLOCK) else_block[nelse++] = strdup(t);
+        }
+        free(line);
+    }
+
+    if (!closed || state == 0) {
+        fprintf(stderr, "syntax error: if needs 'then' ... 'fi'\n");
+    } else if (skip_ws(cond)[0] == '\0') {
+        fprintf(stderr, "syntax error: missing command after if\n");
+    } else if (run_line(cond) == 0) {          // exit status 0 = success
+        for (int i = 0; i < nthen; i++) run_line(then_block[i]);
+    } else {
+        for (int i = 0; i < nelse; i++) run_line(else_block[i]);
+    }
+
+    free(cond);
+    for (int i = 0; i < nthen; i++) free(then_block[i]);
+    for (int i = 0; i < nelse; i++) free(else_block[i]);
+}
+
 int main() {
     char* cmdline;
 
     while (1) {
-        reap_jobs();   // collect finished background children (zombies)
+        reap_jobs();
 
         cmdline = readline(PROMPT);
         if (cmdline == NULL) break;
@@ -76,7 +128,12 @@ int main() {
         add_history(cmdline);
         add_history_cmd(cmdline);
 
-        run_line(cmdline);
+        char* t = skip_ws(cmdline);
+        if (strncmp(t, "if", 2) == 0 && (t[2] == ' ' || t[2] == '\t' || t[2] == '\0')) {
+            handle_if(t + 2);
+        } else {
+            run_line(cmdline);
+        }
         free(cmdline);
     }
 
