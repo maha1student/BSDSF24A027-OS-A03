@@ -25,6 +25,8 @@ static int run_command(char* segment) {
         arglist[last] = NULL;
     }
 
+    expand_variables(arglist);   // replace $VAR with its value before running
+
     if (arglist[0] == NULL) {
         fprintf(stderr, "syntax error: nothing to run before &\n");
         status = 1;

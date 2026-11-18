@@ -1,4 +1,5 @@
 #include "shell.h"
+#include <ctype.h>
 
 static char* history[HISTORY_SIZE];
 static int history_count = 0;
@@ -10,6 +11,65 @@ typedef struct {
 
 static Job jobs[MAXJOBS];
 static int job_count = 0;
+
+// Shell variables: singly linked list of name/value pairs
+typedef struct Var {
+    char* name;
+    char* value;
+    struct Var* next;
+} Var;
+
+static Var* var_head = NULL;
+
+static void set_var(const char* name, const char* value) {
+    for (Var* v = var_head; v != NULL; v = v->next) {
+        if (strcmp(v->name, name) == 0) {   // already exists: update
+            free(v->value);
+            v->value = strdup(value);
+            return;
+        }
+    }
+    Var* nv = (Var*)malloc(sizeof(Var));
+    nv->name = strdup(name);
+    nv->value = strdup(value);
+    nv->next = var_head;
+    var_head = nv;
+}
+
+static const char* get_var(const char* name) {
+    for (Var* v = var_head; v != NULL; v = v->next) {
+        if (strcmp(v->name, name) == 0) return v->value;
+    }
+    return NULL;
+}
+
+static void print_vars(void) {
+    for (Var* v = var_head; v != NULL; v = v->next) {
+        printf("%s=%s\n", v->name, v->value);
+    }
+}
+
+// NAME=value : name starts with letter/underscore, then letters/digits/underscore
+static int is_assignment(const char* s) {
+    if (!(isalpha((unsigned char)s[0]) || s[0] == '_')) return 0;
+    int i = 1;
+    while (isalnum((unsigned char)s[i]) || s[i] == '_') i++;
+    return s[i] == '=';
+}
+
+// Replaces every argument that starts with '$' by the variable's value.
+// Shell variables first, then environment (so $HOME works). Unknown -> empty.
+void expand_variables(char** arglist) {
+    for (int i = 0; arglist[i] != NULL; i++) {
+        if (arglist[i][0] == '$' && arglist[i][1] != '\0') {
+            const char* val = get_var(arglist[i] + 1);
+            if (val == NULL) val = getenv(arglist[i] + 1);
+            char* expanded = strdup(val ? val : "");
+            free(arglist[i]);          // old buffer from tokenize()
+            arglist[i] = expanded;     // main.c frees this later like any other arg
+        }
+    }
+}
 
 void add_history_cmd(char* cmdline) {
     if (history_count == HISTORY_SIZE) {
@@ -118,7 +178,14 @@ char** tokenize(char* cmdline) {
 }
 
 int handle_builtin(char** arglist) {
-    if (strcmp(arglist[0], "exit") == 0) {
+    if (is_assignment(arglist[0])) {
+        char* eq = strchr(arglist[0], '=');
+        *eq = '\0';                       // split into NAME and value
+        set_var(arglist[0], eq + 1);
+        *eq = '=';
+        return 1;
+    }
+    else if (strcmp(arglist[0], "exit") == 0) {
         printf("Shell exited.\n");
         exit(0);
     }
@@ -147,6 +214,10 @@ int handle_builtin(char** arglist) {
         for (int i = 0; i < history_count; i++) {
             printf("%d  %s\n", i + 1, history[i]);
         }
+        return 1;
+    }
+    else if (strcmp(arglist[0], "set") == 0) {
+        print_vars();
         return 1;
     }
     return 0;

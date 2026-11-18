@@ -25,5 +25,6 @@ char* get_history_cmd(int n);
 void add_job(pid_t pid, const char* cmd);
 void reap_jobs(void);
 void print_jobs(void);
+void expand_variables(char** arglist);
 
 #endif // SHELL_H
